@@ -7,7 +7,7 @@
   [![License](https://img.shields.io/badge/license-MIT-green.svg)](#)
   [![Platform](https://img.shields.io/badge/platform-Windows-lightgrey.svg)](#)
 </div>
-
+  <img src="ex.png" alt="ويدجت احترافي وعائم لمواقيت الصلاة على سطح المكتب" width="100"/>
 <br>
 
 ## 🌟 نبذة عن التطبيق
