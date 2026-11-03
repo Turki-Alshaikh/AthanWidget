@@ -3,10 +3,12 @@ import os
 import json
 import winreg
 import requests
+import subprocess
 from datetime import datetime, timedelta
 
 from PyQt6.QtWidgets import (QApplication, QWidget, QLabel, QVBoxLayout, QHBoxLayout, 
-                             QSlider, QPushButton, QColorDialog, QSystemTrayIcon, QMenu, QFrame)
+                             QSlider, QPushButton, QColorDialog, QSystemTrayIcon, QMenu, QFrame,
+                             QMessageBox, QProgressDialog)
 from PyQt6.QtCore import Qt, QTimer, QThread, pyqtSignal
 from PyQt6.QtGui import QColor, QPainter, QPainterPath, QFont, QIcon, QCursor, QPixmap
 
@@ -15,21 +17,13 @@ CONFIG_FILE = "AthanWidget_config.json"
 REPO_OWNER = "Turki-Alshaikh"
 REPO_NAME = "AthanWidget"
 
-# ==========================================
-# دالة مسار الملفات (محدثة لتعمل بشكل مثالي في VS Code و exe)
-# ==========================================
 def resource_path(relative_path):
     try:
-        # عند تحويله إلى exe
         base_path = sys._MEIPASS
     except Exception:
-        # عند تشغيله كسكربت بايثون عادي
         base_path = os.path.dirname(os.path.abspath(__file__))
     return os.path.join(base_path, relative_path)
 
-# ==========================================
-# 1. إعدادات التطبيق الأساسية
-# ==========================================
 DEFAULT_CONFIG = {
     "x": 100, "y": 100,
     "width": 280, "height": 160,
@@ -69,7 +63,7 @@ def convert_to_arabic(text):
     return text.translate(str.maketrans('0123456789', '٠١٢٣٤٥٦٧٨٩'))
 
 # ==========================================
-# 2. كائن جلب البيانات 
+# كائن جلب البيانات
 # ==========================================
 class PrayerTimeFetcher(QThread):
     data_fetched = pyqtSignal(dict)
@@ -92,11 +86,48 @@ class PrayerTimeFetcher(QThread):
                 'العشاء': timings['Isha']
             }
             self.data_fetched.emit(prayers)
-        except Exception as e:
+        except:
             self.error_occurred.emit("لا يوجد اتصال بالإنترنت")
 
 # ==========================================
-# 3. زر التبديل الاحترافي (iOS Toggle) 
+# كائن تحميل التحديثات (يعمل بالخلفية كي لا يتجمد البرنامج)
+# ==========================================
+class UpdateDownloader(QThread):
+    progress = pyqtSignal(int)
+    finished = pyqtSignal(str)
+    error = pyqtSignal(str)
+
+    def __init__(self, download_url):
+        super().__init__()
+        self.download_url = download_url
+
+    def run(self):
+        try:
+            response = requests.get(self.download_url, stream=True, timeout=10)
+            response.raise_for_status()
+            total_size = int(response.headers.get('content-length', 0))
+            
+            # مسار التحميل (بجانب البرنامج الحالي)
+            exe_path = sys.executable if getattr(sys, 'frozen', False) else __file__
+            dir_name = os.path.dirname(exe_path)
+            new_file_path = os.path.join(dir_name, "AthanWidget_update.exe")
+
+            with open(new_file_path, 'wb') as f:
+                downloaded = 0
+                for chunk in response.iter_content(chunk_size=8192):
+                    if chunk:
+                        f.write(chunk)
+                        downloaded += len(chunk)
+                        if total_size > 0:
+                            prog = int((downloaded / total_size) * 100)
+                            self.progress.emit(prog)
+            
+            self.finished.emit(new_file_path)
+        except Exception as e:
+            self.error.emit(str(e))
+
+# ==========================================
+# زر التبديل الاحترافي
 # ==========================================
 class IOSToggle(QWidget):
     stateChanged = pyqtSignal(bool)
@@ -118,13 +149,10 @@ class IOSToggle(QWidget):
     def paintEvent(self, event):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        
         color = QColor("#34C759") if self._state else QColor("#3A3A3C")
-        
         path = QPainterPath()
         path.addRoundedRect(0, 0, self.width(), self.height(), 12, 12)
         painter.fillPath(path, color)
-        
         x = 22 if self._state else 2
         painter.setBrush(Qt.GlobalColor.white)
         painter.setPen(Qt.PenStyle.NoPen)
@@ -132,7 +160,7 @@ class IOSToggle(QWidget):
         painter.end()
 
 # ==========================================
-# 4. نافذة الإعدادات
+# نافذة الإعدادات
 # ==========================================
 class SettingsWindow(QWidget):
     settings_changed = pyqtSignal()
@@ -157,18 +185,15 @@ class SettingsWindow(QWidget):
         title_bar.setStyleSheet("background-color: #2C2C2E; border-top-left-radius: 15px; border-top-right-radius: 15px;")
         title_layout = QHBoxLayout(title_bar)
         title_layout.setContentsMargins(15, 0, 10, 0)
-        
         lbl_title = QLabel("الإعدادات")
         lbl_title.setStyleSheet(f"color: white; font-family: '{self.config['font_family']}'; font-size: 14px; font-weight: bold;")
         title_layout.addWidget(lbl_title)
         title_layout.addStretch()
-        
         btn_close = QPushButton("✕")
         btn_close.setFixedSize(30, 30)
         btn_close.setStyleSheet("QPushButton { background-color: transparent; color: #8E8E93; font-weight: bold; font-size: 14px; border: none; } QPushButton:hover { color: #FF3B30; }")
         btn_close.clicked.connect(self.close)
         title_layout.addWidget(btn_close)
-        
         main_layout.addWidget(title_bar)
 
         content = QWidget()
@@ -182,7 +207,6 @@ class SettingsWindow(QWidget):
         lbl_alpha = QLabel("شفافية الخلفية:")
         lbl_alpha.setStyleSheet(font_sub)
         content_layout.addWidget(lbl_alpha)
-        
         self.alpha_slider = QSlider(Qt.Orientation.Horizontal)
         self.alpha_slider.setRange(20, 100)
         self.alpha_slider.setValue(int(self.config["bg_alpha"] * 100))
@@ -200,7 +224,6 @@ class SettingsWindow(QWidget):
             lbl = QLabel(text)
             lbl.setStyleSheet(font_main)
             row.addWidget(lbl)
-            
             btn = QPushButton("تغيير")
             btn.setFixedSize(60, 26)
             btn.setStyleSheet("QPushButton { background-color: #2C2C2E; color: #0A84FF; border-radius: 5px; font-weight: bold; } QPushButton:hover { background-color: #3A3A3C; color: white; }")
@@ -224,7 +247,6 @@ class SettingsWindow(QWidget):
             lbl = QLabel(text)
             lbl.setStyleSheet(font_main)
             row.addWidget(lbl)
-            
             tgl = IOSToggle(initial_state)
             tgl.stateChanged.connect(command)
             row.addWidget(tgl)
@@ -280,7 +302,7 @@ class SettingsWindow(QWidget):
         painter.end()
 
 # ==========================================
-# 5. الويدجت الرئيسي (الواجهة العائمة)
+# الويدجت الرئيسي (الواجهة العائمة)
 # ==========================================
 class AthanWidget(QWidget):
     def __init__(self):
@@ -312,10 +334,8 @@ class AthanWidget(QWidget):
         
         self.lbl_title = QLabel(" AthanWidget")
         self.lbl_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        
         self.lbl_prayer = QLabel("جاري التحميل...")
         self.lbl_prayer.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        
         self.lbl_time = QLabel("--:--:--")
         self.lbl_time.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
@@ -331,7 +351,6 @@ class AthanWidget(QWidget):
         w = self.width()
         scale = w / 280.0
         ff = self.config["font_family"]
-
         self.lbl_title.setStyleSheet(f"color: {self.config['text_secondary']}; font-family: '{ff}'; font-size: {int(11*scale)}px; font-weight: bold;")
         self.lbl_prayer.setStyleSheet(f"color: {self.config['text_primary']}; font-family: '{ff}'; font-size: {int(22*scale)}px; font-weight: bold;")
         self.lbl_time.setStyleSheet(f"color: {self.config['accent_color']}; font-family: '{ff}'; font-size: {int(34*scale)}px; font-weight: bold;")
@@ -340,15 +359,12 @@ class AthanWidget(QWidget):
     def paintEvent(self, event):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        
         bg_color = QColor(self.config["bg_color"])
         bg_color.setAlphaF(self.config["bg_alpha"]) 
-        
         path = QPainterPath()
         r = int(25 * (self.width() / 280.0))
         path.addRoundedRect(0, 0, self.width(), self.height(), r, r)
         painter.fillPath(path, bg_color)
-
         painter.setPen(QColor(self.config["text_secondary"]))
         w, h = self.width(), self.height()
         scale = w / 280.0
@@ -357,12 +373,9 @@ class AthanWidget(QWidget):
             painter.drawLine(int(w - 6*scale - offset), int(h - 6*scale), int(w - 6*scale), int(h - 6*scale - offset))
         painter.end()
 
-    # --- أيقونة شريط المهام ---
     def init_tray_icon(self):
         icon_path = resource_path("icon.ico")
         qicon = QIcon(icon_path)
-        
-        # نظام حماية (Fallback): إذا لم يجد الأيقونة يتم رسم أيقونة بديلة
         if qicon.isNull():
             pixmap = QPixmap(64, 64)
             pixmap.fill(Qt.GlobalColor.transparent)
@@ -380,10 +393,8 @@ class AthanWidget(QWidget):
         
         action_settings = tray_menu.addAction(" إعدادات الويدجت")
         action_settings.triggered.connect(self.open_settings)
-        
         action_update = tray_menu.addAction(" التحقق من التحديثات")
         action_update.triggered.connect(self.check_for_updates)
-        
         tray_menu.addSeparator()
         action_exit = tray_menu.addAction(" خروج")
         action_exit.triggered.connect(self.safe_exit)
@@ -398,7 +409,6 @@ class AthanWidget(QWidget):
             else:
                 self.is_resizing = False
             self.old_pos = event.globalPosition().toPoint()
-
         elif event.button() == Qt.MouseButton.RightButton:
             menu = QMenu(self)
             menu.setStyleSheet("QMenu { background-color: #1C1C1E; color: white; border: 1px solid #2C2C2E; font-size: 13px; } QMenu::item:selected { background-color: #0A84FF; }")
@@ -414,9 +424,7 @@ class AthanWidget(QWidget):
             self.setCursor(QCursor(Qt.CursorShape.SizeFDiagCursor))
         else:
             self.setCursor(QCursor(Qt.CursorShape.ArrowCursor))
-
         if not self.old_pos: return
-
         if self.is_resizing:
             delta = event.globalPosition().toPoint() - self.old_pos
             new_width = max(180, min(600, self.width() + delta.x()))
@@ -447,7 +455,6 @@ class AthanWidget(QWidget):
 
     def update_clock(self):
         if not self.prayers: return
-
         now = datetime.now()
         current_time_str = now.strftime("%H:%M")
         
@@ -469,7 +476,6 @@ class AthanWidget(QWidget):
         timer_str = f"{h:02d}:{m:02d}:{s:02d}"
         if self.config["arabic_numbers"]:
             timer_str = convert_to_arabic(timer_str)
-
         self.lbl_prayer.setText(f"صلاة {next_name}")
         self.lbl_time.setText(timer_str)
 
@@ -487,6 +493,9 @@ class AthanWidget(QWidget):
         self.apply_styles()
         self.update_clock()
 
+    # ==========================================
+    # التحديث التلقائي الفعلي
+    # ==========================================
     def check_for_updates(self):
         try:
             url = f"https://api.github.com/repos/{REPO_OWNER}/{REPO_NAME}/releases/latest"
@@ -495,15 +504,81 @@ class AthanWidget(QWidget):
             latest_version = response.get("tag_name", "").replace("v", "")
             
             if latest_version and latest_version > APP_VERSION:
-                msg = f"متوفر تحديث جديد (v{latest_version})!\nتفضل بزيارة صفحة GitHub للتحميل."
-                icon_type = QSystemTrayIcon.MessageIcon.Information
-            else:
-                msg = f"أنت تستخدم أحدث إصدار (v{APP_VERSION})."
-                icon_type = QSystemTrayIcon.MessageIcon.NoIcon
+                # العثور على ملف الـ exe من المرفقات
+                assets = response.get("assets", [])
+                download_url = None
+                for asset in assets:
+                    if asset["name"].endswith(".exe"):
+                        download_url = asset["browser_download_url"]
+                        break
                 
-            self.tray_icon.showMessage("تحديثات AthanWidget", msg, icon_type, 3000)
+                if not download_url:
+                    self.tray_icon.showMessage("خطأ", "تم العثور على تحديث ولكن ملف التحميل غير متوفر.", QSystemTrayIcon.MessageIcon.Warning, 3000)
+                    return
+
+                # سؤال المستخدم للتحديث
+                reply = QMessageBox.question(None, 'تحديث متوفر', f"متوفر تحديث جديد (v{latest_version}).\nهل تريد تحميله وتثبيته الآن تلقائياً؟", QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+                
+                if reply == QMessageBox.StandardButton.Yes:
+                    self.start_download(download_url)
+            else:
+                self.tray_icon.showMessage("تحديثات AthanWidget", f"أنت تستخدم أحدث إصدار (v{APP_VERSION}).", QSystemTrayIcon.MessageIcon.NoIcon, 3000)
         except Exception as e:
             self.tray_icon.showMessage("خطأ", "تعذر الاتصال بخادم التحديثات.", QSystemTrayIcon.MessageIcon.Warning, 3000)
+
+    def start_download(self, url):
+        # نافذة تقدم التحميل
+        self.progress_dialog = QProgressDialog("جاري تحميل التحديث...", "إلغاء", 0, 100)
+        self.progress_dialog.setWindowTitle("تحديث AthanWidget")
+        self.progress_dialog.setWindowModality(Qt.WindowModality.ApplicationModal)
+        self.progress_dialog.setAutoClose(True)
+        self.progress_dialog.show()
+
+        self.downloader = UpdateDownloader(url)
+        self.downloader.progress.connect(self.progress_dialog.setValue)
+        self.downloader.finished.connect(self.on_download_finished)
+        self.downloader.error.connect(self.on_download_error)
+        self.progress_dialog.canceled.connect(self.downloader.terminate)
+        
+        self.downloader.start()
+
+    def on_download_finished(self, new_file_path):
+        self.progress_dialog.close()
+        
+        # التأكد من أن البرنامج يعمل كـ exe وليس سكربت لكي تنجح عملية الاستبدال
+        if not getattr(sys, 'frozen', False):
+            QMessageBox.warning(None, "تنبيه", "ميزة التحديث التلقائي والاستبدال تعمل فقط عندما يكون البرنامج بصيغة (exe).")
+            return
+
+        exe_path = sys.executable
+        bat_path = os.path.join(os.path.dirname(exe_path), "update_athan.bat")
+        current_exe_name = os.path.basename(exe_path)
+        
+        # سكربت الإحلال المخفي
+        bat_content = f"""@echo off
+timeout /t 2 /nobreak > NUL
+:loop
+del "{current_exe_name}"
+if exist "{current_exe_name}" (
+    timeout /t 1 /nobreak > NUL
+    goto loop
+)
+ren "AthanWidget_update.exe" "{current_exe_name}"
+start "" "{current_exe_name}"
+del "%~f0"
+"""
+        with open(bat_path, "w", encoding="utf-8") as f:
+            f.write(bat_content)
+        
+        # تشغيل السكربت في الخلفية بدون شاشة سوداء
+        CREATE_NO_WINDOW = 0x08000000
+        subprocess.Popen([bat_path], creationflags=CREATE_NO_WINDOW)
+        
+        self.safe_exit() # إغلاق البرنامج الحالي للسماح للسكربت باستبداله
+
+    def on_download_error(self, err):
+        self.progress_dialog.close()
+        QMessageBox.critical(None, "خطأ في التحميل", f"حدث خطأ أثناء تحميل التحديث:\n{err}")
 
     def safe_exit(self):
         self.config["x"] = self.x()
