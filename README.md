@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="/imgs/AthanWidget150x150.png" alt="AthanWidget Logo" width="100"/>
+  <img src="/img/AthanWidget150x150.png" alt="AthanWidget Logo" width="100"/>
   <h1>🕌 AthanWidget</h1>
   <p><strong>A Sleek, Minimalist Windows Desktop Widget for Prayer Times</strong></p>
   <p><strong>ويدجت احترافي وعائم لمواقيت الصلاة على سطح المكتب (Windows)</strong></p>
