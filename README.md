@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="AthanWidget150x150.png" alt="AthanWidget Logo" width="100"/>
+  <img src="/imgs/AthanWidget150x150.png" alt="AthanWidget Logo" width="100"/>
   <h1>🕌 AthanWidget</h1>
   <p><strong>A Sleek, Minimalist Windows Desktop Widget for Prayer Times</strong></p>
   <p><strong>ويدجت احترافي وعائم لمواقيت الصلاة على سطح المكتب (Windows)</strong></p>
@@ -10,7 +10,7 @@
 </div>
 
 <br>
-
+  <img src="/imgs/banner.jpg" alt="AthanWidget Logo" width="500"/>
 <div align="center">
   <a href="#-arabic-عربي">عربي 🇸🇦</a> &nbsp; | &nbsp; <a href="#-english">English 🇺🇸</a>
 </div>
