@@ -10,7 +10,7 @@
 </div>
 
 <br>
-  <img src="/imgs/banner.jpg" alt="AthanWidget Logo" width="1000"/>
+  <img src="/img/banner.jpg" alt="AthanWidget Logo" width="1000"/>
 <div align="center">
   <a href="#-arabic-عربي">عربي 🇸🇦</a> &nbsp; | &nbsp; <a href="#-english">English 🇺🇸</a>
 </div>
